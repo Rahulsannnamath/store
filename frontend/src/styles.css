@@ -1,0 +1,232 @@
+/* toolbar */
+.stores-toolbar {
+  margin: 0 auto 16px;
+  max-width: 1200px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+}
+.stores-search {
+  width: clamp(260px, 40vw, 520px);
+}
+
+/* loading */
+.stores-loading {
+  display: grid;
+  place-items: center;
+  padding: 64px 0;
+}
+
+/* 3 cards per row on desktop */
+.stores-wrapper {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 1200px;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.store-card {
+  flex: 0 0 calc((100% - 48px) / 3);
+  max-width: calc((100% - 48px) / 3);
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+/* bigger image inside card */
+.store-media {
+  height: 280px;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 2 cards per row on tablets */
+@media (max-width: 1024px) {
+  .store-card {
+    flex: 0 0 calc((100% - 24px) / 2);
+    max-width: calc((100% - 24px) / 2);
+  }
+  .store-media {
+    height: 240px;
+  }
+}
+
+/* 1 card per row on mobile */
+@media (max-width: 640px) {
+  .stores-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .stores-search {
+    width: 100%;
+  }
+  .store-card {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+  .store-media {
+    height: 220px;
+  }
+}
+
+/* auth dialogs alignment with page spacing */
+.MuiDialog-paper {
+  margin: 16px;
+}
+.MuiDialogTitle-root {
+  padding-bottom: 4px;
+}
+
+/* Make auth inputs a bit more compact and prevent label jump overlap */
+.auth-dialog .MuiTextField-root { margin-top: 4px; }
+.auth-dialog .MuiInputBase-root.MuiInputBase-sizeSmall { height: 40px; }
+.auth-dialog .MuiFormHelperText-root { margin-top: 4px; font-size: 0.75rem; }
+.auth-dialog .MuiDialogContent-root { padding-top: 8px; }
+
+/* smoother star fill/selection feedback */
+.MuiRating-iconFilled {
+  transition: transform 120ms ease, color 120ms ease;
+}
+.MuiRating-iconActive {
+  transform: scale(1.1);
+}
+
+/* Owner dashboard */
+.owner-toolbar {
+  margin: 0 auto 12px;
+  max-width: 1200px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.owner-summary {
+  margin: 0 auto;
+  max-width: 1200px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.owner-summary-card {
+  flex: 1 1 240px;
+  min-width: 220px;
+  border-radius: 16px;
+}
+
+.owner-stores {
+  margin: 0 auto;
+  max-width: 1200px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+.owner-card {
+  flex: 0 0 calc((100% - 48px) / 3);
+  max-width: calc((100% - 48px) / 3);
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.owner-media {
+  height: 220px;
+  width: 100%;
+  object-fit: cover;
+}
+
+.owner-raters {
+  padding: 8px 16px 12px;
+}
+.owner-rater-row {
+  padding: 8px 0;
+  gap: 12px;
+  border-bottom: 1px solid #eee;
+}
+.owner-rater-row:last-child {
+  border-bottom: none;
+}
+.owner-rater-avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 0.9rem;
+}
+
+.owner-expand {
+  transition: transform 160ms ease;
+}
+.owner-expand-open {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 1024px) {
+  .owner-card {
+    flex: 0 0 calc((100% - 24px) / 2);
+    max-width: calc((100% - 24px) / 2);
+  }
+}
+@media (max-width: 640px) {
+  .owner-card {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
+/* Admin dashboard */
+.admin-toolbar {
+  margin: 0 auto 16px;
+  max-width: 1200px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.admin-summary {
+  margin: 0 auto 16px;
+  max-width: 1200px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-summary-card {
+  flex: 1 1 280px;
+  min-width: 240px;
+  border-radius: 14px;
+}
+.admin-summary-number {
+  font-weight: 800;
+  font-size: 1.8rem;
+}
+.admin-summary-number.highlight {
+  color: #1976d2;
+}
+.admin-grid {
+  margin: 0 auto;
+  max-width: 1200px;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+}
+.admin-left {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-right {
+  display: flex;
+  flex-direction: column;
+}
+.admin-form-card, .admin-list-card {
+  border-radius: 14px;
+}
+@media (max-width: 960px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
