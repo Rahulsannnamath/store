@@ -1,98 +1,118 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Box, Typography, Card, CardContent, TextField, Button, Stack, Chip,
   Divider, MenuItem, Select, InputLabel, FormControl, IconButton, Tooltip,
-  Table, TableHead, TableRow, TableCell, TableBody, Alert
+  Table, TableHead, TableRow, TableCell, TableBody, Alert, InputAdornment
 } from "@mui/material";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import RefreshIcon from "@mui/icons-material/Refresh";
-
-const seedUsers = [
-  { id: 1, name: "Admin User", email: "admin@storeconnect.com", address: "789 Admin Avenue", role: "admin" },
-  { id: 2, name: "Rahul Sannamath", email: "user@gmail.com", address: "123 Willow Lane", role: "user" },
-  { id: 3, name: "owner1", email: "owner1@gmail.com", address: "12 Market St", role: "store_owner", ownerRating: 4.4 },
-  { id: 4, name: "owner2", email: "owner2@gmail.com", address: "450 River Road", role: "store_owner", ownerRating: 4.1 },
-  { id: 5, name: "owner3", email: "owner3@gmail.com", address: "22 Bay Ave", role: "store_owner", ownerRating: 4.6 },
-];
-
-const seedStores = [
-  { id: 201, name: "The Corner Shop", email: "contact@cornershop.com", address: "123 Elm Street, Anytown", avgRating: 4.5, ratingsCount: 112 },
-  { id: 202, name: "Tech Haven", email: "support@techhaven.com", address: "456 Oak Avenue, Anytown", avgRating: 4.2, ratingsCount: 87 },
-  { id: 203, name: "Fashion Forward", email: "hello@fashionforward.com", address: "789 Pine Lane, Anytown", avgRating: 4.8, ratingsCount: 154 },
-];
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import { adminGetStats, adminListUsers, adminListStores, adminCreateUser, adminCreateStore } from "../api";
 
 export default function AdminDashboard({ onLogout }) {
-  const [users, setUsers] = useState(seedUsers);
-  const [stores, setStores] = useState(seedStores);
+  const [users, setUsers] = useState([]);
+  const [stores, setStores] = useState([]);
+  const [stats, setStats] = useState({ totalUsers: 0, totalStores: 0, totalRatings: 0 });
   const [error, setError] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
 
-  // Add New User form state
+  // Add forms
   const [nu, setNu] = useState({ name: "", email: "", password: "", address: "", role: "user" });
-  // Add New Store form state
-  const [ns, setNs] = useState({ name: "", email: "", address: "" });
+  const [ns, setNs] = useState({ name: "", email: "", address: "", owner_id: "", image_url: "" });
 
   // Filters
   const [userQuery, setUserQuery] = useState("");
   const [userRole, setUserRole] = useState("all");
   const [storeQuery, setStoreQuery] = useState("");
 
-  const totals = useMemo(() => {
-    const totalUsers = users.length;
-    const totalStores = stores.length;
-    const totalRatings = stores.reduce((a, s) => a + Number(s.ratingsCount || 0), 0);
-    return { totalUsers, totalStores, totalRatings };
-  }, [users, stores]);
+  const loadAll = async ({ reloadUsers = true, reloadStores = true } = {}) => {
+    setError("");
+    try {
+      const [s] = await Promise.all([adminGetStats()]);
+      setStats(s);
+    } catch (e) {
+      setError(e.message || "Failed to load stats");
+    }
+    try {
+      if (reloadUsers) {
+        const u = await adminListUsers({ q: userQuery, role: userRole });
+        setUsers(u);
+      }
+    } catch (e) {
+      setError(e.message || "Failed to load users");
+    }
+    try {
+      if (reloadStores) {
+        const st = await adminListStores({ q: storeQuery });
+        setStores(st);
+      }
+    } catch (e) {
+      setError(e.message || "Failed to load stores");
+    }
+  };
 
-  const filteredUsers = useMemo(() => {
-    const q = userQuery.trim().toLowerCase();
-    return users.filter(u => {
-      const matchRole = userRole === "all" || u.role === userRole;
-      const matchQ = !q || [u.name, u.email, u.address, u.role].some(f => (f || "").toLowerCase().includes(q));
-      return matchRole && matchQ;
-    });
-  }, [users, userQuery, userRole]);
+  useEffect(() => { loadAll(); }, []); // initial
 
-  const filteredStores = useMemo(() => {
-    const q = storeQuery.trim().toLowerCase();
-    return stores.filter(s =>
-      !q || [s.name, s.email, s.address].some(f => (f || "").toLowerCase().includes(q))
-    );
-  }, [stores, storeQuery]);
+  // live filter refresh
+  useEffect(() => { adminListUsers({ q: userQuery, role: userRole }).then(setUsers).catch(e => setError(e.message)); }, [userQuery, userRole]);
+  useEffect(() => { adminListStores({ q: storeQuery }).then(setStores).catch(e => setError(e.message)); }, [storeQuery]);
 
-  const handleAddUser = () => {
+  const totals = useMemo(() => ({
+    totalUsers: stats.totalUsers,
+    totalStores: stats.totalStores,
+    totalRatings: stats.totalRatings
+  }), [stats]);
+
+  // Normalize API roles ('store_owner' or 'owner') to display labels
+  const roleToLabel = (role) =>
+    role === "store_owner" || role === "owner"
+      ? "Store Owner"
+      : role === "admin"
+      ? "Admin"
+      : "Normal User";
+
+  const handleAddUser = async () => {
     setError("");
     if (!nu.name.trim() || !nu.email.trim() || !nu.password.trim()) {
       setError("Please fill Name, Email and Password.");
       return;
     }
-    const next = {
-      id: Math.max(0, ...users.map(u => u.id)) + 1,
-      name: nu.name.trim(),
-      email: nu.email.trim(),
-      address: nu.address.trim(),
-      role: nu.role,
-      ownerRating: nu.role === "store_owner" ? 4.2 : undefined
-    };
-    setUsers(prev => [next, ...prev]);
-    setNu({ name: "", email: "", password: "", address: "", role: "user" });
+    try {
+      await adminCreateUser({
+        name: nu.name.trim(),
+        email: nu.email.trim(),
+        password: nu.password,
+        address: nu.address.trim(),
+        role: nu.role
+      });
+      setNu({ name: "", email: "", password: "", address: "", role: "user" });
+      await loadAll({ reloadUsers: true, reloadStores: false });
+    } catch (e) {
+      setError(e.message || "Failed to create user");
+    }
   };
 
-  const handleAddStore = () => {
+  const handleAddStore = async () => {
     setError("");
     if (!ns.name.trim() || !ns.email.trim()) {
       setError("Please fill Store Name and Email.");
       return;
     }
-    const next = {
-      id: Math.max(0, ...stores.map(s => s.id)) + 1,
-      name: ns.name.trim(),
-      email: ns.email.trim(),
-      address: ns.address.trim(),
-      avgRating: 0.0,
-      ratingsCount: 0
-    };
-    setStores(prev => [next, ...prev]);
-    setNs({ name: "", email: "", address: "" });
+    try {
+      const payload = {
+        name: ns.name.trim(),
+        email: ns.email.trim(),
+        address: ns.address.trim(),
+        image_url: ns.image_url.trim()
+      };
+      if (String(ns.owner_id).trim()) payload.owner_id = Number(ns.owner_id);
+      await adminCreateStore(payload);
+      setNs({ name: "", email: "", address: "", owner_id: "", image_url: "" });
+      await Promise.all([loadAll({ reloadStores: true, reloadUsers: false })]);
+    } catch (e) {
+      setError(e.message || "Failed to create store");
+    }
   };
 
   return (
@@ -101,32 +121,30 @@ export default function AdminDashboard({ onLogout }) {
 
       <Box className="admin-toolbar">
         <Typography variant="h5" sx={{ fontWeight: 800 }}>StoreConnect - Admin Panel</Typography>
-        <Button variant="outlined" onClick={onLogout}>Logout</Button>
       </Box>
 
       <Box className="admin-summary">
         <Card className="admin-summary-card" elevation={1}>
           <CardContent>
             <Typography variant="overline" color="text.secondary">Total Users</Typography>
-            <Typography className="admin-summary-number">{totals.totalUsers.toLocaleString()}</Typography>
+            <Typography className="admin-summary-number">{totals.totalUsers?.toLocaleString?.() || totals.totalUsers}</Typography>
           </CardContent>
         </Card>
         <Card className="admin-summary-card" elevation={1}>
           <CardContent>
             <Typography variant="overline" color="text.secondary">Total Stores</Typography>
-            <Typography className="admin-summary-number">{totals.totalStores.toLocaleString()}</Typography>
+            <Typography className="admin-summary-number">{totals.totalStores?.toLocaleString?.() || totals.totalStores}</Typography>
           </CardContent>
         </Card>
         <Card className="admin-summary-card" elevation={1}>
           <CardContent>
             <Typography variant="overline" color="text.secondary">Total Ratings</Typography>
-            <Typography className="admin-summary-number highlight">{totals.totalRatings.toLocaleString()}</Typography>
+            <Typography className="admin-summary-number highlight">{totals.totalRatings?.toLocaleString?.() || totals.totalRatings}</Typography>
           </CardContent>
         </Card>
       </Box>
 
       <Box className="admin-grid">
-        {/* Left column: Add New Entity */}
         <Box className="admin-left">
           <Card elevation={1} className="admin-form-card">
             <CardContent>
@@ -134,7 +152,22 @@ export default function AdminDashboard({ onLogout }) {
               <Stack spacing={1.25}>
                 <TextField size="small" label="Name" value={nu.name} onChange={e => setNu(v => ({ ...v, name: e.target.value }))} />
                 <TextField size="small" label="Email" value={nu.email} onChange={e => setNu(v => ({ ...v, email: e.target.value }))} />
-                <TextField size="small" label="Password" type="password" value={nu.password} onChange={e => setNu(v => ({ ...v, password: e.target.value }))} />
+                <TextField
+                  size="small"
+                  label="Password"
+                  type={showPwd ? "text" : "password"}
+                  value={nu.password}
+                  onChange={e => setNu(v => ({ ...v, password: e.target.value }))}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton edge="end" size="small" onClick={() => setShowPwd(s => !s)} aria-label="toggle password visibility">
+                          {showPwd ? <VisibilityOff /> : <Visibility />}
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }}
+                />
                 <TextField size="small" label="Address" value={nu.address} onChange={e => setNu(v => ({ ...v, address: e.target.value }))} />
                 <FormControl size="small">
                   <InputLabel id="role-label">Role</InputLabel>
@@ -156,13 +189,14 @@ export default function AdminDashboard({ onLogout }) {
                 <TextField size="small" label="Store Name" value={ns.name} onChange={e => setNs(v => ({ ...v, name: e.target.value }))} />
                 <TextField size="small" label="Email" value={ns.email} onChange={e => setNs(v => ({ ...v, email: e.target.value }))} />
                 <TextField size="small" label="Address" value={ns.address} onChange={e => setNs(v => ({ ...v, address: e.target.value }))} />
+                <TextField size="small" label="Owner User ID (optional)" value={ns.owner_id} onChange={e => setNs(v => ({ ...v, owner_id: e.target.value }))} />
+                <TextField size="small" label="Image URL (optional)" value={ns.image_url} onChange={e => setNs(v => ({ ...v, image_url: e.target.value }))} />
                 <Button variant="contained" onClick={handleAddStore}>Add Store</Button>
               </Stack>
             </CardContent>
           </Card>
         </Box>
 
-        {/* Right column: Manage Users and Stores */}
         <Box className="admin-right">
           <Card elevation={1} className="admin-list-card">
             <CardContent>
@@ -171,7 +205,7 @@ export default function AdminDashboard({ onLogout }) {
                 <TextField
                   size="small"
                   fullWidth
-                  placeholder="Filter by Name, Email or Address"
+                  placeholder="Filter by Name, Email, Address, Role"
                   value={userQuery}
                   onChange={e => setUserQuery(e.target.value)}
                   InputProps={{
@@ -198,29 +232,16 @@ export default function AdminDashboard({ onLogout }) {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>NAME</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>EMAIL</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>ADDRESS</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>ROLE</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>OWNER RATING</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredUsers.map(u => (
+                  {users.map(u => (
                     <TableRow key={u.id} hover>
                       <TableCell>{u.name}</TableCell>
                       <TableCell>{u.email}</TableCell>
-                      <TableCell>{u.address}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={u.role === "store_owner" ? "Store Owner" : u.role.charAt(0).toUpperCase() + u.role.slice(1)} />
-                      </TableCell>
-                      <TableCell>
-                        {u.role === "store_owner" ? (
-                          <Stack direction="row" alignItems="center" spacing={0.5}>
-                            <StarRoundedIcon color="warning" fontSize="small" />
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>{(u.ownerRating || 0).toFixed(1)}</Typography>
-                          </Stack>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">—</Typography>
-                        )}
+                        <Chip size="small" label={roleToLabel(u.role)} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -261,14 +282,14 @@ export default function AdminDashboard({ onLogout }) {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredStores.map(s => (
+                  {stores.map(s => (
                     <TableRow key={s.id} hover>
                       <TableCell>{s.name}</TableCell>
                       <TableCell>{s.email}</TableCell>
                       <TableCell>{s.address}</TableCell>
                       <TableCell>
                         <Stack direction="row" alignItems="center" spacing={0.5}>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{Number(s.avgRating).toFixed(1)}/5</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{Number(s.avgRating || 0).toFixed(1)}/5</Typography>
                           <StarRoundedIcon color="warning" fontSize="small" />
                         </Stack>
                       </TableCell>

@@ -96,3 +96,57 @@ export async function getStoreRaters(storeId) {
   if (!res.ok) throw new Error((await res.json()).message || "Failed to load raters");
   return res.json();
 }
+
+// Admin API
+export async function adminGetStats() {
+  const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: { ...authHeaders() } });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) throw new Error(data?.message || "Failed to load stats");
+  return data;
+}
+
+export async function adminListUsers({ q = "", role = "all" } = {}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (role && role !== "all") params.set("role", role);
+  const res = await fetch(`${API_BASE}/api/admin/users?${params.toString()}`, { headers: { ...authHeaders() } });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : [];
+  if (!res.ok) throw new Error(data?.message || "Failed to load users");
+  return data;
+}
+
+export async function adminCreateUser(payload) {
+  const res = await fetch(`${API_BASE}/api/admin/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload)
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) throw new Error(data?.message || "Failed to create user");
+  return data;
+}
+
+export async function adminListStores({ q = "" } = {}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  const res = await fetch(`${API_BASE}/api/admin/stores?${params.toString()}`, { headers: { ...authHeaders() } });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : [];
+  if (!res.ok) throw new Error(data?.message || "Failed to load stores");
+  return data;
+}
+
+export async function adminCreateStore(payload) {
+  const res = await fetch(`${API_BASE}/api/admin/stores`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload)
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) throw new Error(data?.message || "Failed to create store");
+  return data;
+}
