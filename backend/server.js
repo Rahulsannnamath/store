@@ -15,16 +15,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Health
+
 app.get("/", (req, res) => res.send("server is up"));
 
-// Mount routes (paths remain identical to your current API)
-app.use("/api/auth", authRoutes);
-app.use("/api", storeRoutes);         // /getstores, /stores/:storeId/ratings
-app.use("/api/owner", ownerRoutes);   // /stores, /stores/:storeId/raters
-app.use("/api/admin", adminRoutes);   // /stats, /users, /stores, etc.
 
-// Global error handler
+app.use("/api/auth", authRoutes);
+app.use("/api", storeRoutes);         
+app.use("/api/owner", ownerRoutes);   
+app.use("/api/admin", adminRoutes);   
+
+
 app.use((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return next(err);
@@ -34,7 +34,7 @@ app.use((err, req, res, next) => {
 (async () => {
   try {
     await initDB();
-    app.locals.db = pool; // keep for compatibility
+    app.locals.db = pool; 
     const port = process.env.PORT || 8080;
     app.listen(port, () => console.log(`server at ${port}`));
   } catch (e) {
