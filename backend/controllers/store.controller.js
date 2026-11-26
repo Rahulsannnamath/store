@@ -1,14 +1,14 @@
 const { pool } = require("../utils/db");
 const { STORE_TABLE } = require("../utils/config");
-const { getUserIdFromReq } = require("../utils/auth");
+
 
 async function getStores(req, res) {
   try {
-    let userId = -1;
-    try { userId = getUserIdFromReq(req) ?? -1; } catch {}
+    const userId = req.user?.sub ?? -1;
     const { q } = req.query;
     const params = [];
     let where = "";
+    if (q !== undefined && typeof q !== 'string') return res.status(400).json({ message: 'invalid search' });
     if (q && q.trim()) {
       where = "WHERE s.name LIKE ? OR s.address LIKE ?";
       const like = `%${q.trim()}%`;
@@ -28,7 +28,7 @@ async function getStores(req, res) {
       ORDER BY s.created_at DESC
     `;
     const [rows] = await pool.query(sql, [userId, ...params]);
-    return res.json(rows);
+    return res.json(rows.map(row => ({ ...row, avgRating: Number(row.avgRating), ratingsCount: Number(row.ratingsCount), userRating: row.userRating == null ? null : Number(row.userRating) })));
   } catch {
     return res.status(500).json({ message: "failed to fetch stores" });
   }
@@ -38,11 +38,13 @@ async function upsertRating(req, res) {
   try {
     const userId = req.user.sub;
     const storeId = Number(req.params.storeId);
-    const rating = Number(req.body?.rating);
+    const rating = req.body?.rating;
 
     if (!Number.isInteger(storeId) || storeId <= 0) return res.status(400).json({ message: "invalid store id" });
-    if (!Number.isFinite(rating) || rating < 1 || rating > 5) return res.status(400).json({ message: "rating must be 1-5" });
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ message: "rating must be 1-5" });
 
+    const [[store]] = await pool.query('SELECT id FROM storedata WHERE id = ?', [storeId]);
+    if (!store) return res.status(404).json({ message: 'store not found' });
     await pool.query(
       `INSERT INTO ratings (store_id, user_id, rating)
        VALUES (?, ?, ?)

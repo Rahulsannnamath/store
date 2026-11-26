@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Box, Typography, Card, CardContent, CardMedia, Chip, Stack,
-  IconButton, Collapse, Divider, Avatar, Tooltip, Alert
+  IconButton, Collapse, Divider, Avatar, Tooltip, Alert, CircularProgress, TextField, MenuItem
 } from "@mui/material";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { getOwnerStores, getStoreRaters } from "../api";
 
+import { sortedRows } from "../validation";
+
 export default function OwnerDashboard({ user }) {
+  const [sort, setSort] = useState({ key: "name", direction: "asc" });
+  const [loading, setLoading] = useState(true);
+  const [loadingRaters, setLoadingRaters] = useState({});
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState({});
   const [raters, setRaters] = useState({});
@@ -21,14 +26,14 @@ export default function OwnerDashboard({ user }) {
         setStores(data || []);
       } catch (e) {
         setError(e.message || "Failed to load stores");
-      }
+      } finally { setLoading(false); }
     })();
   }, []);
 
   const totals = useMemo(() => {
     const count = stores.length;
     const ratingsCount = stores.reduce((a, s) => a + Number(s.ratingsCount || 0), 0);
-    const avg = count ? Number((stores.reduce((a, s) => a + Number(s.avgRating || 0), 0) / count).toFixed(1)) : 0;
+    const avg = ratingsCount ? Number((stores.reduce((a, s) => a + Number(s.ratingSum || 0), 0) / ratingsCount).toFixed(1)) : 0;
     return { count, ratingsCount, avg };
   }, [stores]);
 
@@ -36,12 +41,13 @@ export default function OwnerDashboard({ user }) {
     const next = !open[id];
     setOpen(p => ({ ...p, [id]: next }));
     if (next && !raters[id]) {
+      setLoadingRaters(p => ({ ...p, [id]: true }));
       try {
         const rows = await getStoreRaters(id);
         setRaters(prev => ({ ...prev, [id]: rows || [] }));
       } catch (e) {
         setError(e.message || "Failed to load raters");
-      }
+      } finally { setLoadingRaters(p => ({ ...p, [id]: false })); }
     }
   };
 
@@ -84,10 +90,15 @@ export default function OwnerDashboard({ user }) {
         Your Stores
       </Typography>
 
+      {loading && <CircularProgress aria-label="Loading owner stores" />}
+      {!loading && !stores.length && <Alert severity="info">No stores assigned yet.</Alert>}
+      <TextField select label="Sort your stores" size="small" value={`${sort.key}:${sort.direction}`} onChange={e => { const [key, direction] = e.target.value.split(':'); setSort({ key, direction }); }} sx={{ mb: 2 }}>
+       {['name','address','avgRating'].flatMap(key => ['asc','desc'].map(direction => <MenuItem key={`${key}:${direction}`} value={`${key}:${direction}`}>{key === 'avgRating' ? 'Rating' : key} {direction === 'asc' ? 'ascending' : 'descending'}</MenuItem>))}
+      </TextField>
       <Box className="owner-stores">
-        {stores.map((s) => (
+        {sortedRows(stores, sort).map((s) => (
           <Card key={s.id} className="owner-card" elevation={2}>
-            <CardMedia component="img" image={s.image_url || "https://via.placeholder.com/640x360?text=Store"} alt={s.name} className="owner-media" />
+            <CardMedia component="img" image={s.image_url || "/store-placeholder.svg"} alt={s.name} className="owner-media" />
             <CardContent sx={{ pb: 1 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
                 {s.name}
@@ -108,10 +119,10 @@ export default function OwnerDashboard({ user }) {
 
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Recent Ratings
+                  Submitted Ratings
                 </Typography>
                 <Tooltip title={open[s.id] ? "Hide details" : "View details"}>
-                  <IconButton size="small" onClick={() => toggle(s.id)}>
+                  <IconButton aria-label={`View ratings for ${s.name}`} aria-expanded={!!open[s.id]} size="small" onClick={() => toggle(s.id)}>
                     <ExpandMoreIcon className={open[s.id] ? "owner-expand owner-expand-open" : "owner-expand"} />
                   </IconButton>
                 </Tooltip>
@@ -121,6 +132,7 @@ export default function OwnerDashboard({ user }) {
             <Collapse in={!!open[s.id]}>
               <Divider />
               <Box className="owner-raters">
+                {loadingRaters[s.id] && <CircularProgress size={24} aria-label="Loading ratings" />}
                 {(raters[s.id] || []).map((r) => (
                   <Stack key={r.id} direction="row" alignItems="center" className="owner-rater-row">
                     <Avatar className="owner-rater-avatar">
@@ -140,7 +152,7 @@ export default function OwnerDashboard({ user }) {
                     </Stack>
                   </Stack>
                 ))}
-                {(!raters[s.id] || raters[s.id]?.length === 0) && (
+                {!loadingRaters[s.id] && raters[s.id]?.length === 0 && (
                   <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                     No ratings yet.
                   </Typography>

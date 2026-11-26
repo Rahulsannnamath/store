@@ -1,16 +1,26 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Box, Typography, Card, CardContent, TextField, Button, Stack, Chip,
   Divider, MenuItem, Select, InputLabel, FormControl, IconButton, Tooltip,
-  Table, TableHead, TableRow, TableCell, TableBody, Alert, InputAdornment
+  Table, TableHead, TableRow, TableCell, TableBody, Alert, InputAdornment, TableSortLabel, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress
 } from "@mui/material";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import { adminGetStats, adminListUsers, adminListStores, adminCreateUser, adminCreateStore } from "../api";
+import { adminGetStats, adminListUsers, adminListStores, adminCreateUser, adminCreateStore, adminGetUser } from "../api";
 
-export default function AdminDashboard({ onLogout }) {
+import { userError, sortedRows } from "../validation";
+
+export default function AdminDashboard() {
+  const [userSort, setUserSort] = useState({ key: 'name', direction: 'asc' });
+  const [storeSort, setStoreSort] = useState({ key: 'name', direction: 'asc' });
+  const [detail, setDetail] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [loading, setLoading] = useState(true);
+  const sortHeader = (label, key, sort, setSort) => <TableCell sortDirection={sort.key === key ? sort.direction : false}><TableSortLabel active={sort.key === key} direction={sort.key === key ? sort.direction : 'asc'} onClick={() => setSort({ key, direction: sort.key === key && sort.direction === 'asc' ? 'desc' : 'asc' })}>{label}</TableSortLabel></TableCell>;
+  const showUser = async id => { try { setDetail(await adminGetUser(id)); } catch(e) { setError(e.message); } };
   const [users, setUsers] = useState([]);
   const [stores, setStores] = useState([]);
   const [stats, setStats] = useState({ totalUsers: 0, totalStores: 0, totalRatings: 0 });
@@ -26,7 +36,7 @@ export default function AdminDashboard({ onLogout }) {
   const [userRole, setUserRole] = useState("all");
   const [storeQuery, setStoreQuery] = useState("");
 
-  const loadAll = async ({ reloadUsers = true, reloadStores = true } = {}) => {
+  const loadAll = useCallback(async ({ reloadUsers = true, reloadStores = true } = {}) => {
     setError("");
     try {
       const [s] = await Promise.all([adminGetStats()]);
@@ -50,13 +60,13 @@ export default function AdminDashboard({ onLogout }) {
     } catch (e) {
       setError(e.message || "Failed to load stores");
     }
-  };
+  }, [userQuery, userRole, storeQuery]);
 
-  useEffect(() => { loadAll(); }, []); // initial
+  useEffect(() => { adminGetStats().then(setStats).catch(e => setError(e.message)).finally(() => setLoading(false)); }, []);
 
   // live filter refresh
-  useEffect(() => { adminListUsers({ q: userQuery, role: userRole }).then(setUsers).catch(e => setError(e.message)); }, [userQuery, userRole]);
-  useEffect(() => { adminListStores({ q: storeQuery }).then(setStores).catch(e => setError(e.message)); }, [storeQuery]);
+  useEffect(() => { let active = true; adminListUsers({ q: userQuery, role: userRole }).then(data => { if (active) setUsers(data); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [userQuery, userRole]);
+  useEffect(() => { let active = true; adminListStores({ q: storeQuery }).then(data => { if (active) setStores(data); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [storeQuery]);
 
   const totals = useMemo(() => ({
     totalUsers: stats.totalUsers,
@@ -74,10 +84,9 @@ export default function AdminDashboard({ onLogout }) {
 
   const handleAddUser = async () => {
     setError("");
-    if (!nu.name.trim() || !nu.email.trim() || !nu.password.trim()) {
-      setError("Please fill Name, Email and Password.");
-      return;
-    }
+    const validation = userError(nu);
+    if (validation) { setError(validation); return; }
+    setBusy(true);
     try {
       await adminCreateUser({
         name: nu.name.trim(),
@@ -88,17 +97,19 @@ export default function AdminDashboard({ onLogout }) {
       });
       setNu({ name: "", email: "", password: "", address: "", role: "user" });
       await loadAll({ reloadUsers: true, reloadStores: false });
+      setNotice("User created");
     } catch (e) {
       setError(e.message || "Failed to create user");
-    }
+    } finally { setBusy(false); }
   };
 
   const handleAddStore = async () => {
     setError("");
-    if (!ns.name.trim() || !ns.email.trim()) {
-      setError("Please fill Store Name and Email.");
+    if (!ns.name.trim() || ns.name.trim().length > 60 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ns.email.trim()) || ns.email.trim().length > 254 || !ns.address.trim() || ns.address.trim().length > 400 || !Number.isInteger(Number(ns.owner_id)) || Number(ns.owner_id) < 1 || ns.image_url.length > 2048 || (ns.image_url && !/^https?:\/\//i.test(ns.image_url))) {
+      setError("Provide a store name (1-60), valid email, address (1-400), valid owner ID, and optional HTTP(S) image URL.");
       return;
     }
+    setBusy(true);
     try {
       const payload = {
         name: ns.name.trim(),
@@ -109,15 +120,26 @@ export default function AdminDashboard({ onLogout }) {
       if (String(ns.owner_id).trim()) payload.owner_id = Number(ns.owner_id);
       await adminCreateStore(payload);
       setNs({ name: "", email: "", address: "", owner_id: "", image_url: "" });
-      await Promise.all([loadAll({ reloadStores: true, reloadUsers: false })]);
+      await loadAll({ reloadStores: true, reloadUsers: false });
+      setNotice("Store created");
     } catch (e) {
       setError(e.message || "Failed to create store");
-    }
+    } finally { setBusy(false); }
   };
 
   return (
     <Box sx={{ px: { xs: 2, md: 4 }, py: 3 }}>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {notice && <Alert severity="success" onClose={() => setNotice('')}>{notice}</Alert>}
+      {loading && <CircularProgress aria-label="Loading dashboard" />}
+      <Dialog open={!!detail} onClose={() => setDetail(null)} fullWidth>
+       <DialogTitle>User details</DialogTitle><DialogContent>
+        {detail && <Stack spacing={1}><Typography>{detail.name}</Typography><Typography>{detail.email}</Typography><Typography>{detail.address}</Typography><Typography>{roleToLabel(detail.role)}</Typography>
+         {(detail.stores || []).map(store => <Typography key={store.id}>{store.name}: {Number(store.avgRating).toFixed(1)}/5 ({store.ratingsCount} ratings)</Typography>)}
+         {detail.role === 'owner' && !detail.stores?.length && <Typography>No stores assigned.</Typography>}
+        </Stack>}
+       </DialogContent><DialogActions><Button onClick={() => setDetail(null)}>Close</Button></DialogActions>
+      </Dialog>
 
       <Box className="admin-toolbar">
         <Typography variant="h5" sx={{ fontWeight: 800 }}>StoreConnect - Admin Panel</Typography>
@@ -150,11 +172,12 @@ export default function AdminDashboard({ onLogout }) {
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Add New User</Typography>
               <Stack spacing={1.25}>
-                <TextField size="small" label="Name" value={nu.name} onChange={e => setNu(v => ({ ...v, name: e.target.value }))} />
+                <TextField helperText="20-60 characters" size="small" label="Name" value={nu.name} onChange={e => setNu(v => ({ ...v, name: e.target.value }))} />
                 <TextField size="small" label="Email" value={nu.email} onChange={e => setNu(v => ({ ...v, email: e.target.value }))} />
                 <TextField
                   size="small"
                   label="Password"
+                  helperText="8-16 characters, uppercase and special required"
                   type={showPwd ? "text" : "password"}
                   value={nu.password}
                   onChange={e => setNu(v => ({ ...v, password: e.target.value }))}
@@ -177,7 +200,7 @@ export default function AdminDashboard({ onLogout }) {
                     <MenuItem value="store_owner">Store Owner</MenuItem>
                   </Select>
                 </FormControl>
-                <Button variant="contained" onClick={handleAddUser}>Add User</Button>
+                <Button disabled={busy} variant="contained" onClick={handleAddUser}>Add User</Button>
               </Stack>
             </CardContent>
           </Card>
@@ -189,9 +212,9 @@ export default function AdminDashboard({ onLogout }) {
                 <TextField size="small" label="Store Name" value={ns.name} onChange={e => setNs(v => ({ ...v, name: e.target.value }))} />
                 <TextField size="small" label="Email" value={ns.email} onChange={e => setNs(v => ({ ...v, email: e.target.value }))} />
                 <TextField size="small" label="Address" value={ns.address} onChange={e => setNs(v => ({ ...v, address: e.target.value }))} />
-                <TextField size="small" label="Owner User ID (optional)" value={ns.owner_id} onChange={e => setNs(v => ({ ...v, owner_id: e.target.value }))} />
+                <TextField size="small" label="Owner User ID" value={ns.owner_id} onChange={e => setNs(v => ({ ...v, owner_id: e.target.value }))} />
                 <TextField size="small" label="Image URL (optional)" value={ns.image_url} onChange={e => setNs(v => ({ ...v, image_url: e.target.value }))} />
-                <Button variant="contained" onClick={handleAddStore}>Add Store</Button>
+                <Button disabled={busy} variant="contained" onClick={handleAddStore}>Add Store</Button>
               </Stack>
             </CardContent>
           </Card>
@@ -227,26 +250,22 @@ export default function AdminDashboard({ onLogout }) {
                 </FormControl>
               </Stack>
 
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>NAME</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>EMAIL</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>ROLE</TableCell>
-                  </TableRow>
-                </TableHead>
+              <Box sx={{ overflowX: "auto" }}><Table size="small">
+                <TableHead><TableRow>{['name','email','address','role'].map(key => <TableCell key={key} sortDirection={userSort.key === key ? userSort.direction : false}><TableSortLabel active={userSort.key === key} direction={userSort.key === key ? userSort.direction : 'asc'} onClick={() => setUserSort({ key, direction: userSort.key === key && userSort.direction === 'asc' ? 'desc' : 'asc' })}>{key.toUpperCase()}</TableSortLabel></TableCell>)}<TableCell>DETAILS</TableCell></TableRow></TableHead>
                 <TableBody>
-                  {users.map(u => (
+                  {!users.length && <TableRow><TableCell colSpan={5}>No users found.</TableCell></TableRow>}
+                  {sortedRows(users, userSort).map(u => (
                     <TableRow key={u.id} hover>
                       <TableCell>{u.name}</TableCell>
                       <TableCell>{u.email}</TableCell>
+                      <TableCell>{u.address}</TableCell>
                       <TableCell>
                         <Chip size="small" label={roleToLabel(u.role)} />
-                      </TableCell>
+                      </TableCell><TableCell><Button onClick={() => showUser(u.id)}>View details</Button></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+              </Table></Box>
             </CardContent>
           </Card>
 
@@ -272,17 +291,13 @@ export default function AdminDashboard({ onLogout }) {
                 />
               </Stack>
 
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>NAME</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>EMAIL</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>ADDRESS</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>RATING</TableCell>
-                  </TableRow>
-                </TableHead>
+              <Box sx={{ overflowX: "auto" }}><Table size="small">
+                <TableHead><TableRow>
+ {sortHeader('NAME', 'name', storeSort, setStoreSort)}{sortHeader('EMAIL', 'email', storeSort, setStoreSort)}{sortHeader('ADDRESS', 'address', storeSort, setStoreSort)}{sortHeader('RATING', 'avgRating', storeSort, setStoreSort)}
+ </TableRow></TableHead>
                 <TableBody>
-                  {stores.map(s => (
+                  {!stores.length && <TableRow><TableCell colSpan={4}>No stores found.</TableCell></TableRow>}
+                  {sortedRows(stores, storeSort).map(s => (
                     <TableRow key={s.id} hover>
                       <TableCell>{s.name}</TableCell>
                       <TableCell>{s.email}</TableCell>
@@ -296,7 +311,7 @@ export default function AdminDashboard({ onLogout }) {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+              </Table></Box>
             </CardContent>
           </Card>
         </Box>

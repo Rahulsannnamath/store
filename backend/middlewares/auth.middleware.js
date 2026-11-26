@@ -1,16 +1,21 @@
 const jwt = require("jsonwebtoken");
 const { JWT_SECRET } = require("../utils/config");
+const { pool } = require('../utils/db');
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const hdr = req.headers.authorization || "";
-  const [, token] = hdr.split(" ");
+  const token = /^Bearer ([^ ]+)$/i.exec(hdr)?.[1];
   if (!token) return res.status(401).json({ message: "unauthorized" });
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'], issuer: 'store-rating', audience: 'store-rating-web' });
+    if (!Number.isSafeInteger(payload.sub) || !['user', 'admin', 'store_owner'].includes(payload.role)) return res.status(401).json({ message: 'invalid token' });
+    const [[user]] = await pool.query('SELECT id, role, token_version FROM users WHERE id = ?', [payload.sub]);
+    if (!user || user.role !== payload.role || user.token_version !== payload.ver) return res.status(401).json({ message: 'session expired' });
+    req.user = { sub: user.id, role: user.role };
     next();
-  } catch {
-    return res.status(401).json({ message: "invalid token" });
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError' || err.name === 'NotBeforeError') return res.status(401).json({ message: 'invalid or expired token' });
+    next(err);
   }
 }
 

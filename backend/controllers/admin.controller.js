@@ -1,4 +1,5 @@
 const bcrypt = require("bcryptjs");
+const { validateUser, emailPattern } = require("../utils/validation");
 const { pool } = require("../utils/db");
 const { STORE_TABLE } = require("../utils/config");
 const { roleMapIn, roleMapOut } = require("../utils/auth");
@@ -20,10 +21,13 @@ async function listUsers(req, res) {
     const params = [];
     const where = [];
 
-    if (role && ["user", "admin", "store_owner"].includes(role)) {
+    if (typeof q !== 'string' || typeof role !== 'string') return res.status(400).json({ message: 'Invalid filter' });
+    if (role && !['user', 'admin', 'owner', 'store_owner'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
+    if (role) {
       where.push("u.role = ?");
-      params.push(role);
+      params.push(roleMapIn(role));
     }
+    if (typeof q !== 'string') return res.status(400).json({ message: 'Invalid filter' });
     if (q && q.trim()) {
       const like = `%${q.trim()}%`;
       where.push("(u.name LIKE ? OR u.email LIKE ? OR u.address LIKE ? OR u.role LIKE ?)");
@@ -73,7 +77,9 @@ async function getUser(req, res) {
       );
       ownerRating = Number(o?.ownerRating ?? 0);
     }
-    return res.json({ ...user, role: roleMapOut(user.role), ownerRating });
+    const [stores] = user.role === 'store_owner' ? await pool.query(
+      `SELECT s.id, s.name, ROUND(COALESCE(AVG(r.rating), 0), 1) AS avgRating, COUNT(r.id) AS ratingsCount FROM storedata s LEFT JOIN ratings r ON r.store_id = s.id WHERE s.owner_id = ? GROUP BY s.id, s.name`, [user.id]) : [[]];
+    return res.json({ ...user, role: roleMapOut(user.role), ownerRating, stores });
   } catch {
     return res.status(500).json({ message: "failed to load user" });
   }
@@ -81,19 +87,16 @@ async function getUser(req, res) {
 
 async function createUser(req, res) {
   try {
-    const { name, email, password, address = "", role = "user" } = req.body || {};
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
-    const pwdOk = typeof password === "string" && password.length >= 6 && password.length <= 64;
-    const nameOk = typeof name === "string" && name.trim().length >= 3 && name.trim().length <= 60;
-    const allowed = new Set(["user", "admin", "store_owner"]);
-    if (!emailOk || !pwdOk || !nameOk || !allowed.has(role)) {
-      return res.status(400).json({ message: "invalid input" });
-    }
+    const input = validateUser(req.body || {});
+    if (input.error) return res.status(400).json({ message: input.error });
+    const { name, email, password, address } = input;
+    const role = req.body.role || 'user';
+    if (!['user', 'admin', 'owner', 'store_owner'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
 
     const [exists] = await pool.query("SELECT id FROM users WHERE email = ?", [email]);
     if (exists.length) return res.status(409).json({ message: "email already in use" });
 
-    const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, 12);
     const dbRole = roleMapIn(role);
     const [result] = await pool.query(
       "INSERT INTO users (name, email, password, address, role) VALUES (?, ?, ?, ?, ?)",
@@ -107,7 +110,8 @@ async function createUser(req, res) {
       address: address?.trim() || "",
       role
     });
-  } catch {
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "email already in use" });
     return res.status(500).json({ message: "failed to create user" });
   }
 }
@@ -117,6 +121,7 @@ async function listStores(req, res) {
     const { q = "" } = req.query || {};
     const params = [];
     let where = "";
+    if (typeof q !== 'string') return res.status(400).json({ message: 'Invalid filter' });
     if (q && q.trim()) {
       const like = `%${q.trim()}%`;
       where = "WHERE s.name LIKE ? OR s.email LIKE ? OR s.address LIKE ?";
@@ -143,8 +148,11 @@ async function listStores(req, res) {
 async function createStore(req, res) {
   try {
     const { name, email = "", address = "", owner_id = null, image_url = "" } = req.body || {};
-    if (!name || !name.trim()) return res.status(400).json({ message: "store name required" });
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "invalid email" });
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 60) return res.status(400).json({ message: 'Store name must be 1-60 characters' });
+    if (typeof email !== 'string' || !emailPattern.test(email.trim()) || email.trim().length > 254) return res.status(400).json({ message: 'Valid store email required' });
+    if (typeof address !== 'string' || !address.trim() || address.trim().length > 400) return res.status(400).json({ message: 'Address is required and must be at most 400 characters' });
+    if (typeof image_url !== 'string' || image_url.length > 2048 || (image_url && !/^https?:\/\//i.test(image_url))) return res.status(400).json({ message: 'Image URL must use HTTP or HTTPS' });
+    if (owner_id == null || owner_id === '') return res.status(400).json({ message: 'Store owner required' });
 
     let ownerIdToSet = null;
     if (owner_id != null) {
@@ -159,7 +167,7 @@ async function createStore(req, res) {
     const [result] = await pool.query(
       `INSERT INTO \`${STORE_TABLE}\` (name, email, address, owner_id, image_url)
        VALUES (?, ?, ?, ?, ?)`,
-      [name.trim(), email.trim(), address.trim(), ownerIdToSet, image_url.trim()]
+      [name.trim(), email.trim().toLowerCase(), address.trim(), ownerIdToSet, image_url.trim()]
     );
 
     return res.status(201).json({

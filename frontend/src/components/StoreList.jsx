@@ -2,14 +2,20 @@ import { useEffect, useState } from "react";
 import {
   Box, Card, CardContent, CardActions, Typography, Rating,
   TextField, InputAdornment, IconButton, Chip, CircularProgress, Alert,
-  Button, CardMedia, Stack
+  Button, CardMedia, Stack, MenuItem
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import { getStores, submitRating, updateRating } from "../api";
 
-export default function StoreList() {
+import { sortedRows } from "../validation";
+
+export default function StoreList({ canRate = false }) {
+  const [sort, setSort] = useState({ key: "name", direction: "asc" });
+  const [saving, setSaving] = useState({});
+  const [notice, setNotice] = useState("");
+  const [refresh, setRefresh] = useState(0);
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -38,11 +44,11 @@ export default function StoreList() {
       }
     })();
     return () => { active = false; };
-  }, [debouncedSearch]);
+  }, [debouncedSearch, refresh]);
 
   const beginEdit = (id) => {
     setEditing(prev => ({ ...prev, [id]: true }));
-    setDraftRatings(prev => ({ ...prev, [id]: 0 }));
+    setDraftRatings(prev => ({ ...prev, [id]: stores.find(s => s.id === id)?.userRating || 0 }));
   };
 
   const onPick = (id, val) => {
@@ -52,6 +58,8 @@ export default function StoreList() {
   const onSubmit = async (store) => {
     const rating = Number(draftRatings[store.id] || 0);
     if (rating < 1) return setError("Pick a rating 1-5 before submitting");
+    setSaving(p => ({ ...p, [store.id]: true }));
+    setError("");
     try {
       const hasRated = !!store.userRating;
       const result = hasRated ? await updateRating(store.id, rating) : await submitRating(store.id, rating);
@@ -60,9 +68,10 @@ export default function StoreList() {
         : s
       ));
       setEditing(prev => ({ ...prev, [store.id]: false }));
+      setNotice("Rating saved");
     } catch (e) {
       setError(e.message || "Rating failed");
-    }
+    } finally { setSaving(p => ({ ...p, [store.id]: false })); }
   };
 
   return (
@@ -73,6 +82,7 @@ export default function StoreList() {
           size="medium"
           value={search}
           onChange={e => setSearch(e.target.value)}
+          label="Search by name or address"
           placeholder="Search by name or address"
           className="stores-search"
           InputProps={{
@@ -83,15 +93,19 @@ export default function StoreList() {
             ),
             endAdornment: (
               <InputAdornment position="end">
-                <IconButton onClick={() => setSearch("")} edge="end">
+                <IconButton aria-label="Refresh stores" onClick={() => setRefresh(n => n + 1)} edge="end">
                   <RefreshIcon />
                 </IconButton>
               </InputAdornment>
             )
           }}
         />
+        <TextField select label="Sort stores" size="small" value={`${sort.key}:${sort.direction}`} onChange={e => { const [key, direction] = e.target.value.split(':'); setSort({ key, direction }); }}>
+         {['name','address','avgRating'].flatMap(key => ['asc','desc'].map(direction => <MenuItem key={`${key}:${direction}`} value={`${key}:${direction}`}>{key === 'avgRating' ? 'Rating' : key} {direction === 'asc' ? 'ascending' : 'descending'}</MenuItem>))}
+        </TextField>
       </Box>
-
+      {notice && <Alert severity="success" onClose={() => setNotice('')}>{notice}</Alert>}
+      {!loading && !stores.length && <Alert severity="info">No stores found.</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {loading ? (
@@ -100,15 +114,12 @@ export default function StoreList() {
         </Box>
       ) : (
         <Box className="stores-wrapper">
-          {stores.map(store => {
-            const hasUserRating = !!store.userRating;
-            const isEditing = !!editing[store.id];
-            const value = isEditing ? Number(draftRatings[store.id] || 0) : Number(store.userRating || 0);
+          {sortedRows(stores, sort).map(store => {
             return (
               <Card key={store.id} className="store-card" elevation={2}>
                 <CardMedia
                   component="img"
-                  image={store.image_url || "https://via.placeholder.com/640x360?text=Store"}
+                  image={store.image_url || "/store-placeholder.svg"}
                   alt={store.name}
                   className="store-media"
                 />
@@ -141,6 +152,9 @@ export default function StoreList() {
                       return (
                         <>
                           <Rating
+                            name={`store-${store.id}-rating`}
+                            readOnly={!canRate || (!!store.userRating && !editing[store.id])}
+                            disabled={!!saving[store.id]}
                             value={value}
                             max={5}
                             onChange={(_, val) => onPick(store.id, val)}
@@ -151,7 +165,7 @@ export default function StoreList() {
                             color={hasUserRating ? (isEditing ? "secondary" : "primary") : (draft > 0 ? "primary" : "secondary")}
                             label={
                               hasUserRating
-                                ? (isEditing ? "Editing…" : "Current")
+                                ? (isEditing ? "EditingÃ¢â‚¬Â¦" : "Current")
                                 : (draft > 0 ? "Selected" : "Not rated")
                             }
                           />
@@ -164,11 +178,11 @@ export default function StoreList() {
                     <Button
                       variant="contained"
                       onClick={() => onSubmit(store)}
-                      disabled={Number(draftRatings[store.id] || 0) < 1}
+                      disabled={!canRate || !!saving[store.id] || (!!store.userRating && !editing[store.id]) || Number(draftRatings[store.id] || 0) < 1}
                     >
-                      Submit Rating
+                      {saving[store.id] ? "Saving..." : store.userRating ? "Save Rating" : "Submit Rating"}
                     </Button>
-                    {Number(store.userRating) > 0 && (
+                    {canRate && Number(store.userRating) > 0 && (
                       <Button
                         variant="outlined"
                         onClick={() => beginEdit(store.id)}
@@ -179,7 +193,7 @@ export default function StoreList() {
                   </Stack>
                 </CardContent>
                 <CardActions sx={{ px: 2, pb: 2, pt: 1 }}>
-                  <Button fullWidth variant="outlined" onClick={() => window.open(store.image_url || "#", "_blank")}>
+                  <Button disabled={!store.image_url} fullWidth variant="outlined" onClick={() => window.open(store.image_url, "_blank", "noopener,noreferrer")}>
                     View Photo
                   </Button>
                 </CardActions>

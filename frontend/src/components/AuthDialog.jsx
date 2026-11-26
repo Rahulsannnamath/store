@@ -2,52 +2,45 @@ import { useMemo, useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Stack, Alert, IconButton, InputAdornment,
-  FormControl, InputLabel, Select, MenuItem
+
 } from "@mui/material";
+import { userError } from "../validation";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 
-const ROLES = [
-  { value: "user", label: "Normal User" },
-  { value: "owner", label: "Store Owner" },
-  { value: "admin", label: "System Administrator" }
-];
-
-export default function AuthDialog({ open, onClose, mode = "login", onSubmit }) {
+export default function AuthDialog({ open, onClose, mode = "login", loginRole, onSubmit }) {
   const isSignup = mode === "signup";
+  const roleLabel = { user: 'User', owner: 'Store Owner', admin: 'Admin' }[loginRole];
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
-  const [role, setRole] = useState("user");
+  const [address, setAddress] = useState("");
+  const [busy, setBusy] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
 
-  const valid = useMemo(() => {
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    const pwdOk = /^(?=.*[A-Z])(?=.*[^\w\s]).{8,16}$/.test(pwd);
-    const nameOk = isSignup ? name.trim().length >= 3 && name.trim().length <= 60 : true;
-    const roleOk = ROLES.some(r => r.value === role);
-    return emailOk && pwdOk && nameOk && roleOk;
-  }, [email, pwd, name, role, isSignup]);
+  const validation = useMemo(() => isSignup ? userError({ name, email, password: pwd, address }) : (!email.trim() || !pwd ? 'Email and password required' : ''), [name, email, pwd, address, isSignup]);
+  const valid = !validation && !busy;
 
   const handleSubmit = async () => {
     setError("");
+    setBusy(true);
     try {
-      await onSubmit?.({ name: name.trim(), email: email.trim(), password: pwd, role });
+      await onSubmit?.({ name: name.trim(), email: email.trim(), password: pwd, address: address.trim() });
       setName("");
       setEmail("");
       setPwd("");
-      setRole("user");
+      setAddress("");
       onClose?.();
     } catch (e) {
       setError(e?.message || "Something went wrong");
-    }
+    } finally { setBusy(false); }
   };
 
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={() => { if (!busy) { setPwd(""); setError(""); onClose(); } }}
       fullWidth
       maxWidth="md"
       PaperProps={{
@@ -60,10 +53,11 @@ export default function AuthDialog({ open, onClose, mode = "login", onSubmit }) 
       className="auth-dialog"
     >
       <DialogTitle sx={{ fontWeight: 800 }}>
-        {isSignup ? "Sign up" : "Log in"}
+        {isSignup ? "Sign up" : roleLabel ? `${roleLabel} login` : "Log in"}
       </DialogTitle>
-      <DialogContent sx={{ pt: 1 }}>
+      <DialogContent sx={{ pt: 1 }}><form id={`${mode}-form`} onSubmit={e => { e.preventDefault(); if (valid) handleSubmit(); }}>
         <Stack spacing={1.5}>
+          {!isSignup && roleLabel && <Alert severity="info">Sign in with your {roleLabel.toLowerCase()} account. Your account permissions determine the dashboard you can access.</Alert>}
           {isSignup && (
             <TextField
               label="Name"
@@ -74,7 +68,7 @@ export default function AuthDialog({ open, onClose, mode = "login", onSubmit }) 
               InputLabelProps={{ shrink: true }}
               autoComplete="name"
               inputProps={{ maxLength: 60 }}
-              helperText="3-60 characters"
+              helperText="20-60 characters"
               fullWidth
               autoFocus
             />
@@ -105,7 +99,7 @@ export default function AuthDialog({ open, onClose, mode = "login", onSubmit }) 
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton onClick={() => setShowPwd((s) => !s)} edge="end">
+                  <IconButton aria-label="Toggle password visibility" onClick={() => setShowPwd((s) => !s)} edge="end">
                     {showPwd ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
                 </InputAdornment>
@@ -113,25 +107,14 @@ export default function AuthDialog({ open, onClose, mode = "login", onSubmit }) 
             }}
             helperText="8-16 characters, at least one uppercase and one special character"
           />
-          <FormControl fullWidth size="small">
-            <InputLabel id="role-label">Role</InputLabel>
-            <Select
-              labelId="role-label"
-              label="Role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              {ROLES.map(r => (
-                <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          {isSignup && <TextField label="Address" value={address} onChange={e => setAddress(e.target.value)} multiline helperText="Required, maximum 400 characters" fullWidth />}
+          {isSignup && validation && <Alert severity="info">{validation}</Alert>}
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
-      </DialogContent>
+      </form></DialogContent>
       <DialogActions sx={{ p: 2.5, pt: 1 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" disabled={!valid} onClick={handleSubmit}>
+        <Button disabled={busy} onClick={() => { setPwd(""); setError(""); onClose(); }}>Cancel</Button>
+        <Button variant="contained" disabled={!valid} type="submit" form={`${mode}-form`}>
           {isSignup ? "Create account" : "Log in"}
         </Button>
       </DialogActions>

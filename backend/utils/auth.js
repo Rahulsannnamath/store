@@ -5,19 +5,7 @@ const roleMapIn = r => ({ admin: "admin", user: "user", owner: "store_owner", st
 const roleMapOut = r => ({ admin: "admin", user: "user", store_owner: "owner" }[r] || "user");
 
 function signToken(user) {
-  return jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign({ sub: user.id, role: user.role, ver: user.token_version || 0 }, JWT_SECRET, { expiresIn: "2h", algorithm: 'HS256', issuer: 'store-rating', audience: 'store-rating-web' });
 }
 
-function getUserIdFromReq(req) {
-  const hdr = req.headers.authorization || "";
-  const [, token] = hdr.split(" ");
-  if (!token) return null;
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    return payload.sub;
-  } catch {
-    return null;
-  }
-}
-
-module.exports = { roleMapIn, roleMapOut, signToken, getUserIdFromReq };
+module.exports = { roleMapIn, roleMapOut, signToken };

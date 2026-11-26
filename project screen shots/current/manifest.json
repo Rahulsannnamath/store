@@ -1,0 +1,55 @@
+{
+  "capturedAt": "2026-11-23T14:20:47.956Z",
+  "baseURL": "http://localhost:5173",
+  "desktopViewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "mobileViewport": {
+    "width": 390,
+    "height": 844
+  },
+  "captures": [
+    {
+      "file": "01-store-listing.png",
+      "title": "Public store listing"
+    },
+    {
+      "file": "02-user-login.png",
+      "title": "User login"
+    },
+    {
+      "file": "03-owner-login.png",
+      "title": "Store Owner login"
+    },
+    {
+      "file": "04-admin-login.png",
+      "title": "Admin login"
+    },
+    {
+      "file": "05-signup.png",
+      "title": "Normal User signup"
+    },
+    {
+      "file": "06-user-dashboard.png",
+      "title": "Normal User ratings"
+    },
+    {
+      "file": "09-change-password.png",
+      "title": "Change password form"
+    },
+    {
+      "file": "07-owner-dashboard.png",
+      "title": "Owner stores and submitted ratings"
+    },
+    {
+      "file": "08-admin-dashboard.png",
+      "title": "Admin statistics and management"
+    },
+    {
+      "file": "10-mobile-store-listing.png",
+      "title": "Mobile public store listing"
+    }
+  ],
+  "errors": []
+}

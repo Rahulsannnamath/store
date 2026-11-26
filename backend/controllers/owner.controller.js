@@ -8,7 +8,7 @@ async function listOwnedStores(req, res) {
       SELECT
         s.id, s.name, s.email, s.address, s.image_url, s.created_at, s.updated_at,
         ROUND(COALESCE(AVG(r.rating), 0), 1) AS avgRating,
-        COUNT(r.id) AS ratingsCount
+        COUNT(r.id) AS ratingsCount, COALESCE(SUM(r.rating), 0) AS ratingSum
       FROM \`${STORE_TABLE}\` s
       LEFT JOIN ratings r ON r.store_id = s.id
       WHERE s.owner_id = ?
@@ -37,7 +37,7 @@ async function getStoreRaters(req, res) {
        INNER JOIN users u ON u.id = r.user_id
        WHERE r.store_id = ?
        ORDER BY r.created_at DESC
-       LIMIT 200`,
+`,
       [storeId]
     );
     return res.json(rows);

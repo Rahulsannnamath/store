@@ -5,6 +5,8 @@ node_modules/
 # Environment files
 .env
 **/.env
+.env.test
+**/.env.test
 
 # Logs
 logs
@@ -20,3 +22,6 @@ Thumbs.db
 # Optional: build output for React frontend
 build/
 dist/
+
+# Local verification outputs
+frontend/test-results.json

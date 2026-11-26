@@ -230,3 +230,5 @@
     grid-template-columns: 1fr;
   }
 }
+.admin-right { min-width: 0; }
+.stores-toolbar, .owner-toolbar, .admin-toolbar { flex-wrap: wrap; gap: 12px; }
